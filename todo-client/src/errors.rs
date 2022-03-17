@@ -4,7 +4,7 @@
  * Created:
  *   17 Mar 2022, 09:26:00
  * Last edited:
- *   17 Mar 2022, 10:16:33
+ *   17 Mar 2022, 14:58:03
  * Auto updated?
  *   Yes
  *
@@ -59,20 +59,31 @@ impl Error for ConfigError {}
 pub enum TuiError {
     /// Could not enable raw mode
     RawModeEnableError{ err: std::io::Error },
-    /// Could not disable raw mode
-    RawModeDisableError{ err: std::io::Error },
-
     /// Could not run the execute! macro
     ExecuteError{ err: std::io::Error },
+    /// COuld not create the new Terminal instance
+    TerminalCreateError{ err: std::io::Error },
+
+    /// Could not disable raw mode
+    RawModeDisableError{ err: std::io::Error },
+    /// Could not show the terminal's cursor
+    ShowCursorError{ err: std::io::Error },
+
+    /// Could not draw to the terminal
+    TerminalDrawError{ err: std::io::Error },
 }
 
 impl Display for TuiError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         match self {
             TuiError::RawModeEnableError{ err }  => write!(f, "Could not enable terminal raw mode: {}", err),
+            TuiError::ExecuteError{ err }        => write!(f, "Could not run execute!: {}", err),
+            TuiError::TerminalCreateError{ err } => write!(f, "Could not create new Terminal: {}", err),
+            
             TuiError::RawModeDisableError{ err } => write!(f, "Could not disable terminal raw mode: {}", err),
+            TuiError::ShowCursorError{ err }     => write!(f, "Could not show terminal cursor: {}", err),
 
-            TuiError::ExecuteError{ err } => write!(f, "Could not run execute!: {}", err),
+            TuiError::TerminalDrawError{ err } => write!(f, "Could not draw to terminal: {}", err),
         }
     }
 }

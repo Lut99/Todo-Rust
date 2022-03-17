@@ -4,7 +4,7 @@
  * Created:
  *   17 Mar 2022, 09:35:54
  * Last edited:
- *   17 Mar 2022, 10:16:50
+ *   17 Mar 2022, 14:59:26
  * Auto updated?
  *   Yes
  *
@@ -19,6 +19,7 @@ use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use tui::Terminal;
 use tui::backend::CrosstermBackend;
+use tui::widgets::{Block, Borders};
 
 pub use crate::errors::TuiError as Error;
 
@@ -42,7 +43,7 @@ impl TerminalUi {
         }
 
         // Create a stdout handle
-        let stdout = io::stdout();
+        let mut stdout = io::stdout();
         
         // Put it in the correct settings
         if let Err(err) = execute!(stdout, EnterAlternateScreen, EnableMouseCapture) {
@@ -51,7 +52,10 @@ impl TerminalUi {
 
         // Create the TUI backend
         let backend = CrosstermBackend::new(stdout);
-        let terminal = Terminal::new(backend)?;
+        let terminal = match Terminal::new(backend) {
+            Ok(terminal) => terminal,
+            Err(err)     => { return Err(Error::TerminalCreateError{ err }); }
+        };
 
         // Create a self instance with that backend
         Ok(Self {
@@ -68,9 +72,18 @@ impl TerminalUi {
     /// 
     /// **Returns**  
     /// Nothing on success, or else a TuiError.
-    pub fn build_ui() -> Result<(), String> {
-
-        Ok(())
+    pub fn render_ui(&mut self) -> Result<(), Error> {
+        // Draw on the internal terminal
+        match self.terminal.draw(|f| {
+            let size = f.size();
+            let block = Block::default()
+                .title("Hello, world!")
+                .borders(Borders::ALL);
+            f.render_widget(block, size);
+        }) {
+            Ok(_)    => Ok(()),
+            Err(err) => Err(Error::TerminalDrawError{ err }),
+        }
     }
 }
 
@@ -84,6 +97,11 @@ impl Drop for TerminalUi {
         // Disable the terminal mode
         if let Err(err) = execute!(self.terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture) {
             panic!("{}", Error::ExecuteError{ err });
+        }
+
+        // Finally, show the cursor again
+        if let Err(err) = self.terminal.show_cursor() {
+            panic!("{}", Error::ShowCursorError{ err });
         }
     }
 }

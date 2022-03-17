@@ -4,7 +4,7 @@
  * Created:
  *   16 Mar 2022, 18:02:45
  * Last edited:
- *   17 Mar 2022, 10:14:16
+ *   17 Mar 2022, 18:33:24
  * Auto updated?
  *   Yes
  *
@@ -21,7 +21,7 @@ use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use clap::Parser;
+use clap::{Command, Parser};
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde::de::{self, Visitor};
 
@@ -117,10 +117,65 @@ impl Display for Url {
 
 
 
-/***** LIBRARY STRUCTS *****/
+/***** ARGUMENT STRUCTS *****/
+/// Defines the command-line part of the Config struct.
+#[derive(Debug, Parser)]
+#[clap(author, version, about, long_about = None)]
+struct Arguments {
+    /// The location of the config file
+    #[clap(short, long, default_value = &DEFAULT_CONFIG_PATH, help = "The location of the config file for the client.")]
+    config_path : PathBuf,
+
+    /// The location of the logging file
+    #[clap(short, long, help = "The location of the logging file for the client.")]
+    log_path : Option<PathBuf>,
+
+    /// Defined the subcommand that is run
+    #[clap(subcommand)]
+    subcommand : ArgumentSubcommand,
+}
+
+
+
+/// Talks about the subcommands for the config.
+#[derive(Debug, Parser)]
+enum ArgumentSubcommand {
+    /// A Subcommand that logs the user in remotely
+    #[clap(name = "login", about = "Login to a Todo server.")]
+    Login {
+        #[clap(help = "The hostname & port of the remote server to login to.")]
+        host : url::Url,
+
+        #[clap(help = "The username to login with.")]
+        username : String,
+
+        #[clap(short, long, help = "If given, tries to login using a password that is read from stdin.")]
+        password : bool,
+
+        #[clap(short, long, help = "If given, tries to login using an SSH identity file at the given path.")]
+        identity_file : Option<PathBuf>,
+    },
+
+    /// No subcommand is used
+    #[clap(name = "run", about = "Runs the normal interface to the Todo tool.")]
+    Run {
+        /// Overrides the remote host to connect to.
+        #[clap(long, help = "The remote host to connect to. If omitted, uses the value specified in the configuration file (see the 'login' subcommand).")]
+        host : Option<url::Url>,
+    },
+}
+
+
+
+
+
+/***** FILE STRUCTS *****/
 /// Defines the config-file part of the Config struct.
-#[derive(Serialize, Deserialize)]
-pub struct ConfigFile {
+#[derive(Debug, Serialize, Deserialize)]
+struct ConfigFile {
+    /// Defines the standard logging path
+    log_path : PathBuf,
+
     /// Defines the default host to connect to.
     host : Option<Url>,
 }
@@ -128,6 +183,7 @@ pub struct ConfigFile {
 impl Default for ConfigFile {
     fn default() -> Self {
         Self {
+            log_path : dirs_2::config_dir().expect("Could not get standard user configuration directory").join("todo/todo.log"),
             host : None,
         }
     }
@@ -135,17 +191,38 @@ impl Default for ConfigFile {
 
 
 
-/// Defines the configurable part for the client-side todo tool.
-#[derive(Debug, Parser)]
-#[clap(author, version, about, long_about = None)]
+
+
+/***** LIBRARY STRUCTS *****/
+/// Defines subcommands at Config time.
+#[derive(Debug)]
+pub enum ConfigSubcommand {
+    /// The user wants to login somewhere remotely.
+    Login {
+        /// The hostname of the host to login to.
+        host : url::Url,
+
+        /// The username to login with.
+        username    : String,
+        /// The credentials to login with.
+        credentials : String,
+    },
+}
+
+
+
+
+
+/// Joins the Arguments and the File together in one Config struct.
+#[derive(Debug)]
 pub struct Config {
     /// The location of the config file
-    #[clap(short, long, default_value = &DEFAULT_CONFIG_PATH, help = "The location of the config file for the client.")]
     pub config_path : PathBuf,
+    /// The location of the logging file
+    pub log_path    : PathBuf,
 
-    /// Overrides the remote host to connect to.
-    #[clap(long, help = "The remote host to connect to. If omitted, uses the value specified in the configuration file (see 'login').")]
-    pub host : Option<url::Url>,
+    /// The subcommand that is run
+    pub subcommand : ConfigSubcommand,
 }
 
 impl Config {
@@ -155,7 +232,7 @@ impl Config {
     /// A new Config instance on success, or else an Error.
     pub fn load() -> Result<Self, Error> {
         // First, parse the CLI
-        let mut config = Self::parse();
+        let mut config = Arguments::parse();
 
         // Next, open the config file and parse it as the correct struct
         let handle = match File::open(&config.config_path) {
@@ -195,9 +272,20 @@ impl Config {
             Err(err) => { return Err(Error::FileParseError{ path: config.config_path, err }); }
         };
 
-        // Overwrite the relevant parts of the struct
-        if let None = config.host {
-            config.host = config_file.host.map(|host| host.0);
+        // Overwrite the relevant general parts of the struct
+        if let None = config.log_path {
+            config.log_path = Some(config_file.log_path);
+        }
+
+        // Overwrite the relevant subcommand-specific parts of the struct
+        match config.subcommand {
+            ConfigSubcommand::Run{ ref mut host } => {
+                if let None = host {
+                    *host = config_file.host.map(|host| host.0);
+                }
+            },
+
+            _ => {},
         }
 
         // Done!
