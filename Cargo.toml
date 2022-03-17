@@ -1,6 +1,10 @@
 [workspace]
 
 members = [
+    # Libraries
+    "todo-spec",
+
+    # Binaries
     "todo-server",
     "todo-client",
 ]
