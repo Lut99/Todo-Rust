@@ -1,0 +1,78 @@
+/* ERRORS.rs
+ *   by Lut99
+ *
+ * Created:
+ *   17 Mar 2022, 09:26:00
+ * Last edited:
+ *   17 Mar 2022, 10:16:33
+ * Auto updated?
+ *   Yes
+ *
+ * Description:
+ *   Collects the errors in the client-side tool.
+**/
+
+use std::error::Error;
+use std::fmt::{Display, Formatter, Result as FResult};
+use std::path::PathBuf;
+
+
+/***** ERRORS *****/
+/// Errors that occur while loading the Config struct.
+#[derive(Debug)]
+pub enum ConfigError {
+    /// Could not create one or more of the configuration directories
+    DirCreateError{ path: PathBuf, err: std::io::Error },
+    /// Could not create a new config file.
+    FileCreateError{ path: PathBuf, err: std::io::Error },
+    /// Could not serialize the default config file OR write to the new config file.
+    FileGenerateError{ path: PathBuf, err: serde_json::Error },
+
+    /// Could not open the configuration file.
+    FileOpenError{ path: PathBuf, err: std::io::Error },
+    /// Could not parse the configuration file.
+    FileParseError{ path: PathBuf, err: serde_json::Error },
+    /// Could not update the configuration file.
+    FileUpdateError{ path: PathBuf, err: serde_json::Error },
+}
+
+impl Display for ConfigError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        match self {
+            ConfigError::DirCreateError{ path, err }    => write!(f, "Could not create config directory '{}': {}", path.display(), err),
+            ConfigError::FileCreateError{ path, err }   => write!(f, "Could not create config file '{}': {}", path.display(), err),
+            ConfigError::FileGenerateError{ path, err } => write!(f, "Could not write to new config file '{}': {}", path.display(), err),
+
+            ConfigError::FileOpenError{ path, err }   => write!(f, "Could not open config file '{}': {}", path.display(), err),
+            ConfigError::FileParseError{ path, err }  => write!(f, "Could not parse config file '{}': {}", path.display(), err),
+            ConfigError::FileUpdateError{ path, err } => write!(f, "Could not update config file '{}': {}", path.display(), err),
+        }
+    }
+}
+
+impl Error for ConfigError {}
+
+
+
+/// Errors that occur while working with the TUI.
+#[derive(Debug)]
+pub enum TuiError {
+    /// Could not enable raw mode
+    RawModeEnableError{ err: std::io::Error },
+    /// Could not disable raw mode
+    RawModeDisableError{ err: std::io::Error },
+
+    /// Could not run the execute! macro
+    ExecuteError{ err: std::io::Error },
+}
+
+impl Display for TuiError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        match self {
+            TuiError::RawModeEnableError{ err }  => write!(f, "Could not enable terminal raw mode: {}", err),
+            TuiError::RawModeDisableError{ err } => write!(f, "Could not disable terminal raw mode: {}", err),
+
+            TuiError::ExecuteError{ err } => write!(f, "Could not run execute!: {}", err),
+        }
+    }
+}
