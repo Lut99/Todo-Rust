@@ -4,7 +4,7 @@
  * Created:
  *   19 Mar 2022, 11:48:04
  * Last edited:
- *   19 Mar 2022, 18:45:24
+ *   19 Mar 2022, 20:17:00
  * Auto updated?
  *   Yes
  *
@@ -16,6 +16,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 
 use url::Url;
+use warp::reject::Reject;
 
 
 /***** ERRORS *****/
@@ -60,14 +61,30 @@ impl Error for AuthError {}
 pub enum LoginError {
     /// Could not connect to the local MySQL database
     MySqlConnectError{ err: mysql::Error },
+    /// Could not execute the given query
+    MySqlQueryError{ query: String, err: mysql::Error },
+
+    /// Something went wrong with a credential
+    CredentialError{ err: todo_spec::credentials::Error },
+    /// Could not match the given two credentials
+    CredentialVerifyError{ err: todo_spec::credentials::Error },
+    /// The given user was not known to the system
+    UnknownUser{ username: String },
 }
 
 impl Display for LoginError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         match self {
-            LoginError::MySqlConnectError{ err } => write!(f, "Could not connect to MySQL database: {}", err),
+            LoginError::MySqlConnectError{ err }      => write!(f, "Could not connect to MySQL database: {}", err),
+            LoginError::MySqlQueryError{ query, err } => write!(f, "Could not execute query '{}': {}", query, err),
+
+            LoginError::CredentialError{ err }       => write!(f, "{}", err),
+            LoginError::CredentialVerifyError{ err } => write!(f, "Could not verify credentials: {}", err),
+            LoginError::UnknownUser{ username }      => write!(f, "Unknown user '{}'", username),
         }
     }
 }
 
 impl Error for LoginError {}
+
+impl Reject for LoginError {}

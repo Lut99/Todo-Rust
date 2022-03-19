@@ -8,6 +8,8 @@ authors = [ "Lut99" ]
 
 [dependencies]
 clap = { version = "3.1.6", features = ["derive", "env"] }
+hmac = "0.12.1"
+jwt = "0.16.0"
 log = "0.4.14"
 mysql = "22.1.0"
 serde_json = "1.0.79"
