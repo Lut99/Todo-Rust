@@ -4,7 +4,7 @@
  * Created:
  *   16 Mar 2022, 18:00:42
  * Last edited:
- *   19 Mar 2022, 18:18:08
+ *   19 Mar 2022, 21:29:03
  * Auto updated?
  *   Yes
  *
@@ -21,3 +21,6 @@ pub mod errors;
 pub mod cli;
 /// Implements the terminal UI.
 pub mod tui;
+
+/// Handles everything login-related
+pub mod login;

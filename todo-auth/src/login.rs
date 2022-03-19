@@ -4,7 +4,7 @@
  * Created:
  *   19 Mar 2022, 12:05:59
  * Last edited:
- *   19 Mar 2022, 21:19:00
+ *   19 Mar 2022, 22:01:51
  * Auto updated?
  *   Yes
  *
@@ -50,16 +50,17 @@ macro_rules! throw {
 
 
 /***** LIBRARY FUNCTIONS *****/
-/// Handles the logging-in part of the authorization service.
+/// Handles the logging-in part of the authorization service, except that it doesn't actually login but just check the credentials.
 /// 
 /// **Arguments**
 ///  * `pool`: The MySQL pool of connections to use for this service.
-///  * `secret`: The server-wide shared secret that is used to sign the JWT's.
 ///  * `body`: The message body we got with the request.
 /// 
 /// **Returns**  
 /// The Warp reply on success, or a Warp rejection on failure.
-pub async fn handle(pool: Arc<Pool>, secret: Arc<String>, body: LoginJson) -> Result<impl Reply, Rejection> {
+pub async fn handle_test(pool: Arc<Pool>, body: LoginJson) -> Result<impl Reply, Rejection> {
+    info!("Handling login test (v1/login/test)");
+
     // Try to connect to the MySQL database
     let mut conn = match pool.get_conn() {
         Ok(conn) => conn,
@@ -83,16 +84,88 @@ pub async fn handle(pool: Arc<Pool>, secret: Arc<String>, body: LoginJson) -> Re
     };
 
     // Check if there are any
-    if users.len() == 0 { return Ok(warp::reply::with_status(
-        format!("Unknown username '{}'", body.username),
-        StatusCode::NOT_FOUND,
-    )); }
+    if users.len() == 0 {
+        debug!("User '{}' login failure: unknown user", body.username);
+        return Ok(warp::reply::with_status(
+            format!("Unknown username '{}'", body.username),
+            StatusCode::NOT_FOUND,
+        ));
+    }
     let user: &Account = &users[0];
 
     // Verify the password
     match user.credential.verify(&body.username, &body.password) {
         Ok(is_valid) => {
             if !is_valid {
+                debug!("User '{}' login failure: invalid credentials", user.credential.user());
+                return Ok(warp::reply::with_status(
+                    "Invalid password".to_string(),
+                    StatusCode::FORBIDDEN),
+                );
+            }
+        },
+        Err(err) => { throw!(Error::CredentialVerifyError{ err }); }
+    }
+
+    // Success! Generate a JWT for this user.
+    debug!("User '{}' login success", user.credential.user());
+    Ok(warp::reply::with_status(
+        String::from("success"),
+        StatusCode::OK,
+    ))
+}
+
+
+
+/// Handles the logging-in part of the authorization service.
+/// 
+/// **Arguments**
+///  * `pool`: The MySQL pool of connections to use for this service.
+///  * `secret`: The server-wide shared secret that is used to sign the JWT's.
+///  * `body`: The message body we got with the request.
+/// 
+/// **Returns**  
+/// The Warp reply on success, or a Warp rejection on failure.
+pub async fn handle(pool: Arc<Pool>, secret: Arc<String>, body: LoginJson) -> Result<impl Reply, Rejection> {
+    info!("Handling login (v1/login)");
+
+    // Try to connect to the MySQL database
+    let mut conn = match pool.get_conn() {
+        Ok(conn) => conn,
+        Err(err) => { throw!(Error::MySqlConnectError{ err }); }
+    };
+
+    // Select the appropriate database
+    debug!("Selecting database...");
+    let query = String::from("USE todo;");
+    if let Err(err) = conn.query_drop(&query) { throw!(Error::MySqlQueryError{ query, err }); };
+
+    // Query the database for this username
+    debug!("Searching for user '{}'...", &body.username);
+    let query = format!("SELECT id, name, pass FROM users WHERE name = '{}';", &body.username);
+    let users: Vec<Account> = match conn.query_map(
+        &query,
+        |(id, name, pass)| { Account{ id, credential : Credential::new::<String, String>(name, pass).expect("Invalid username made its way into the MySQL database; this should never happen!") } }
+    ) {
+        Ok(res)  => res,
+        Err(err) => { throw!(Error::MySqlQueryError{ query, err }); }
+    };
+
+    // Check if there are any
+    if users.len() == 0 {
+        debug!("User '{}' login failure: unknown user", body.username);
+        return Ok(warp::reply::with_status(
+            format!("Unknown username '{}'", body.username),
+            StatusCode::NOT_FOUND,
+        ));
+    }
+    let user: &Account = &users[0];
+
+    // Verify the password
+    match user.credential.verify(&body.username, &body.password) {
+        Ok(is_valid) => {
+            if !is_valid {
+                debug!("User '{}' login failure: invalid credentials", user.credential.user());
                 return Ok(warp::reply::with_status(
                     "Invalid password".to_string(),
                     StatusCode::FORBIDDEN),

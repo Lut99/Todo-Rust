@@ -4,7 +4,7 @@
  * Created:
  *   17 Mar 2022, 09:26:00
  * Last edited:
- *   19 Mar 2022, 18:48:29
+ *   19 Mar 2022, 21:42:23
  * Auto updated?
  *   Yes
  *
@@ -15,6 +15,9 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 use std::path::PathBuf;
+
+use reqwest::StatusCode;
+use url::Url;
 
 use todo_spec::credentials::Error as CredentialError;
 
@@ -108,3 +111,33 @@ impl Display for TuiError {
         }
     }
 }
+
+impl Error for TuiError {}
+
+
+
+/// Errors that occur while logging in and such.
+#[derive(Debug)]
+pub enum LoginError {
+    /// Could not serialize the Login request body
+    SerializeError{ err: serde_json::Error },
+    /// Could not append a path to a host URL
+    UrlJoinError{ host: Url, path: String, err: url::ParseError },
+    /// Could not send the login request.
+    RequestError{ err: reqwest::Error },
+    /// The server returned a non-valid response
+    ResponseError{ status: StatusCode, response: String },
+}
+
+impl Display for LoginError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        match self {
+            LoginError::SerializeError{ err }           => write!(f, "Could not serialize the login request body: {}", err),
+            LoginError::UrlJoinError{ host, path, err } => write!(f, "Could not append path '{}' to host '{}': {}", path, host, err),
+            LoginError::RequestError{ err }             => write!(f, "Could not send login request: {}", err),
+            LoginError::ResponseError{ status, response } => write!(f, "Host responded with status code {}{}\n\nResponse:\n{}\n", status.as_u16(), if status.canonical_reason().is_some() { format!(" ({})", status.canonical_reason().unwrap()) } else { String::new() }, response),
+        }
+    }
+}
+
+impl Error for LoginError {}

@@ -4,7 +4,7 @@
  * Created:
  *   16 Mar 2022, 18:01:21
  * Last edited:
- *   19 Mar 2022, 18:32:27
+ *   19 Mar 2022, 21:52:57
  * Auto updated?
  *   Yes
  *
@@ -18,6 +18,7 @@ use log::{error, info};
 use simplelog::{LevelFilter, WriteLogger};
 
 use todo_client::cli::{Action, Config};
+use todo_client::login;
 use todo_client::tui::TerminalUi;
 
 
@@ -38,7 +39,7 @@ fn main() {
         Ok(handle) => handle,
         Err(err)   => { eprintln!("Could not open log file '{}': {}", config.log_path.display(), err); std::process::exit(1); }
     };
-    if let Err(err) = WriteLogger::init(LevelFilter::max(), Default::default(), handle) {
+    if let Err(err) = WriteLogger::init(LevelFilter::Debug, Default::default(), handle) {
         eprintln!("Could not initialize logger: {}", err);
         std::process::exit(1);
     };
@@ -57,8 +58,20 @@ fn main() {
 
         Action::Login{ host, credential } => {
             info!("Attempting to connect to '{}'...", &host);
-            
 
+            // Call the appropriate function
+            let result = match login::test_login(host, credential) {
+                Ok(result) => result,
+                Err(err)   => { error!("{}", &err); eprintln!("Login failed: {}", err); std::process::exit(1); }
+            };
+
+            // Show the result
+            if result {
+                println!("Login OK");
+            } else {
+                println!("Login failed: invalid credentials");
+            }
+            println!();
         },
 
         Action::Run{ host: _ } => {

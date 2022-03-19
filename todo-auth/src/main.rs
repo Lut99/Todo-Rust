@@ -4,7 +4,7 @@
  * Created:
  *   19 Mar 2022, 11:45:08
  * Last edited:
- *   19 Mar 2022, 21:14:54
+ *   19 Mar 2022, 21:59:27
  * Auto updated?
  *   Yes
  *
@@ -220,17 +220,30 @@ async fn main() {
 
     // Prepare the warp filter for logging in
     debug!("Preparing warp filter for 'v1/login'...");
-    let users = warp::post()
+    let tpool = pool.clone(); let tsecret = secret.clone();
+    let login = warp::post()
         .and(warp::path("v1"))
         .and(warp::path("login"))
         .and(warp::path::end())
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
-        .and_then(move |body| { login::handle(pool.clone(), secret.clone(), body) });
+        .and_then(move |body| { login::handle(tpool.clone(), tsecret.clone(), body) });
+
+    // Prepare the warp filter for testing login
+    debug!("Preparing warp filter for 'v1/login/test'...");
+    let tpool = pool.clone();
+    let login_test = warp::post()
+        .and(warp::path("v1"))
+        .and(warp::path("login"))
+        .and(warp::path("test"))
+        .and(warp::path::end())
+        .and(warp::body::content_length_limit(1024 * 16))
+        .and(warp::body::json())
+        .and_then(move |body| { login::handle_test(tpool.clone(), body) });
 
     // Prepare the global filter
     debug!("Preparing global warp filter...");
-    let filter = users;
+    let filter = login.or(login_test);
 
     // Run the server
     info!("Running warp server @ {}:{}", &args.host, &args.port);
