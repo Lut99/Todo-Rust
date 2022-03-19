@@ -4,7 +4,7 @@
  * Created:
  *   16 Mar 2022, 18:01:21
  * Last edited:
- *   19 Mar 2022, 12:26:18
+ *   19 Mar 2022, 18:32:27
  * Auto updated?
  *   Yes
  *
@@ -16,6 +16,7 @@ use std::fs::File;
 
 use log::{error, info};
 use simplelog::{LevelFilter, WriteLogger};
+
 use todo_client::cli::{Action, Config};
 use todo_client::tui::TerminalUi;
 
@@ -45,8 +46,17 @@ fn main() {
 
     // Switch on the subcommand used
     match config.action {
+        Action::Generate{ output, credential } => {
+            info!("Generating credentials...");
+            println!("Generating credentials...");
+
+            // Simply call the credential's function
+            if let Err(err) = credential.serialize_to_file(output) { error!("{}", &err); eprintln!("{}", err); std::process::exit(1); }
+            println!("Done.\n");
+        }
+
         Action::Login{ host, credential } => {
-            info!("Attempting to connect to '{}' with authentication method {}...", &host, credential.typename());
+            info!("Attempting to connect to '{}'...", &host);
             
 
         },

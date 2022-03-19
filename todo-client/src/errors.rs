@@ -4,7 +4,7 @@
  * Created:
  *   17 Mar 2022, 09:26:00
  * Last edited:
- *   19 Mar 2022, 10:37:45
+ *   19 Mar 2022, 18:48:29
  * Auto updated?
  *   Yes
  *
@@ -43,6 +43,8 @@ pub enum ConfigError {
     CredentialError{ err: CredentialError },
     /// Could not prompt the user for a password
     PasswordPromptError{ err: std::io::Error },
+    /// The first password and the second password asked do not match
+    UnmatchingPasswords,
 
     /// The user was not logged in
     NotLoggedIn,
@@ -62,6 +64,7 @@ impl Display for ConfigError {
             ConfigError::NoCredentials              => write!(f, "Did not specify a method to provide credentials"),
             ConfigError::CredentialError{ err }     => write!(f, "Could not create a Credential: {}", err),
             ConfigError::PasswordPromptError{ err } => write!(f, "Could not prompt for a password: {}", err),
+            ConfigError::UnmatchingPasswords        => write!(f, "Passwords do not match; aborting"),
 
             ConfigError::NotLoggedIn => write!(f, "You are not logged-in; run the login subcommand first"),
         }

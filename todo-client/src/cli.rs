@@ -4,7 +4,7 @@
  * Created:
  *   16 Mar 2022, 18:02:45
  * Last edited:
- *   19 Mar 2022, 10:38:58
+ *   19 Mar 2022, 18:48:50
  * Auto updated?
  *   Yes
  *
@@ -127,7 +127,6 @@ pub struct Arguments {
     /// The location of the config file
     #[clap(short, long, default_value = &DEFAULT_CONFIG_PATH, help = "The location of the config file for the client.")]
     config_path : PathBuf,
-
     /// The location of the logging file
     #[clap(short, long, help = "The location of the logging file for the client.")]
     log_path : Option<PathBuf>,
@@ -142,6 +141,18 @@ pub struct Arguments {
 /// Talks about the subcommands for the config.
 #[derive(Debug, Parser)]
 enum ArgumentSubcommand {
+    /// A subcommand that generates a .cred file for the given login
+    #[clap(name = "generate", about = "Generate a new credential file for the given username and authentication method.")]
+    Generate {
+        #[clap(short, long, help = "The location of the output file.", default_value = "./user.cred")]
+        output : PathBuf,
+
+        #[clap(help = "The username to login with.")]
+        username : String,
+        #[clap(short, long, help = "If given, tries to login using a password that is read from stdin.")]
+        password : bool,
+    },
+
     /// A Subcommand that logs the user in remotely
     #[clap(name = "login", about = "Login to a Todo server.")]
     Login {
@@ -196,6 +207,14 @@ impl Default for ConfigFile {
 /// Defines subcommands at Config time.
 #[derive(Debug)]
 pub enum Action {
+    /// The user wants to generate a credential file.
+    Generate {
+        /// The output to write to
+        output     : PathBuf,
+        /// The credentials to write
+        credential : Credential,
+    },
+
     /// The user wants to login somewhere remotely.
     Login {
         /// The hostname of the host to login to.
@@ -294,6 +313,37 @@ impl Config {
 
         // Next, match on the Arguments' subcommand to make an Action
         let action = match args.subcommand {
+            ArgumentSubcommand::Generate{ output, username, password } => {
+                // Decide what method of authentication to use
+                let cred: Credential;
+                if password {
+                    // Prompt the user for a password
+                    let password1 = match rpassword::prompt_password("Credential password:") {
+                        Ok(password) => password,
+                        Err(err)     => { return Err(Error::PasswordPromptError{ err }); }  
+                    };
+                    // Prompt the user for a password to verify
+                    let password2 = match rpassword::prompt_password("Verify password:") {
+                        Ok(password) => password,
+                        Err(err)     => { return Err(Error::PasswordPromptError{ err }); }  
+                    };
+
+                    // Be sure they are the same
+                    if password1 != password2 { return Err(Error::UnmatchingPasswords); }
+
+                    // Create a Credential from it
+                    cred = match Credential::from_plain(username, password1) {
+                        Ok(cred) => cred,
+                        Err(err) => { return Err(Error::CredentialError{ err }); }
+                    };
+                } else {
+                    return Err(Error::NoCredentials);
+                }
+
+                // Create the action with that
+                Action::Generate{ output, credential: cred }
+            },
+
             ArgumentSubcommand::Login{ host, username, password } => {
                 // Decide what method of authentication to use
                 let cred: Credential;
@@ -305,7 +355,7 @@ impl Config {
                     };
 
                     // Create a Credential from it
-                    cred = match Credential::from_password(username, password) {
+                    cred = match Credential::from_plain(username, password) {
                         Ok(cred) => cred,
                         Err(err) => { return Err(Error::CredentialError{ err }); }
                     };

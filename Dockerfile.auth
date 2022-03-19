@@ -11,5 +11,9 @@ FROM alpine:3
 # Copy the binary over
 COPY ./target/x86_64-unknown-linux-musl/release/todo-auth /todo-auth
 
+# Copy the authentication files
+COPY ./mysql_root.cred /mysql_root.cred
+COPY ./root.cred /root.cred
+
 # Set it as entrypoint
-ENTRYPOINT ["/todo-auth"]
+ENTRYPOINT [ "/todo-auth" ]

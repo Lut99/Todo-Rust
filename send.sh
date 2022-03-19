@@ -4,7 +4,7 @@
 # Created:
 #   19 Mar 2022, 10:47:42
 # Last edited:
-#   19 Mar 2022, 11:41:44
+#   19 Mar 2022, 17:15:27
 # Auto updated?
 #   Yes
 #
@@ -34,24 +34,28 @@ exec_cmd() {
 
 
 # Parse the CLI
-if [[ "$#" -ne 1 ]]; then
-    echo "Usage: $0 <registry>"
+port=5000
+if [[ "$#" -eq 2 ]]; then
+    port="$2"
+elif [[ "$#" -ne 1 ]]; then
+    echo "Usage: $0 <registry> [<registry_port>]"
     exit 1
 fi
 registry="$1"
 
 
 
-# Build the project for the Docker kind
-exec_cmd rustup target add x86_64-unknown-linux-musl
-exec_cmd cargo build --release --target x86_64-unknown-linux-musl --package todo-auth
-
-# Build the images we'll be using
-version=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' todo-auth/Cargo.toml)
-exec_cmd docker build --load -t "$registry/todo-auth:$version" -f Dockerfile.auth .
+# Run build first
+exec_cmd ./build.sh
 
 # Send it over using docker's push
-exec_cmd docker push "$registry/todo-auth:$version"
+version=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' todo-auth/Cargo.toml)
+exec_cmd docker tag "todo-auth:$version" "$registry:$port/todo-auth:$version"
+exec_cmd docker push "$registry:$port/todo-auth:$version"
+
+# Also send the auxillary files
+exec_cmd scp ./run.sh "$registry:Rust/Todo-Rust/"
+exec_cmd scp ./todo-server.yml "$registry:Rust/Todo-Rust/"
 
 # Done
 echo ""
