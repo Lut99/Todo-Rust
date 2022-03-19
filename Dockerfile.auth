@@ -1,0 +1,15 @@
+# DOCKERFILE for TODO-AUTH
+#   by Lut99
+#
+# Dockerfile for the authorization service of the Todo-project.
+# 
+
+
+# Use the alpine image as base
+FROM alpine:3
+
+# Copy the binary over
+COPY ./target/x86_64-unknown-linux-musl/release/todo-auth /todo-auth
+
+# Set it as entrypoint
+ENTRYPOINT ["/todo-auth"]
