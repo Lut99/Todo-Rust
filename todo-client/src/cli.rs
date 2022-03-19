@@ -4,7 +4,7 @@
  * Created:
  *   16 Mar 2022, 18:02:45
  * Last edited:
- *   17 Mar 2022, 18:33:24
+ *   19 Mar 2022, 10:38:58
  * Auto updated?
  *   Yes
  *
@@ -21,9 +21,11 @@ use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use clap::{Command, Parser};
+use clap::Parser;
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde::de::{self, Visitor};
+
+use todo_spec::credentials::Credential;
 
 pub use crate::errors::ConfigError as Error;
 
@@ -121,7 +123,7 @@ impl Display for Url {
 /// Defines the command-line part of the Config struct.
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
-struct Arguments {
+pub struct Arguments {
     /// The location of the config file
     #[clap(short, long, default_value = &DEFAULT_CONFIG_PATH, help = "The location of the config file for the client.")]
     config_path : PathBuf,
@@ -151,9 +153,6 @@ enum ArgumentSubcommand {
 
         #[clap(short, long, help = "If given, tries to login using a password that is read from stdin.")]
         password : bool,
-
-        #[clap(short, long, help = "If given, tries to login using an SSH identity file at the given path.")]
-        identity_file : Option<PathBuf>,
     },
 
     /// No subcommand is used
@@ -172,7 +171,7 @@ enum ArgumentSubcommand {
 /***** FILE STRUCTS *****/
 /// Defines the config-file part of the Config struct.
 #[derive(Debug, Serialize, Deserialize)]
-struct ConfigFile {
+pub struct ConfigFile {
     /// Defines the standard logging path
     log_path : PathBuf,
 
@@ -196,16 +195,19 @@ impl Default for ConfigFile {
 /***** LIBRARY STRUCTS *****/
 /// Defines subcommands at Config time.
 #[derive(Debug)]
-pub enum ConfigSubcommand {
+pub enum Action {
     /// The user wants to login somewhere remotely.
     Login {
         /// The hostname of the host to login to.
-        host : url::Url,
+        host       : url::Url,
+        /// The credentials to login
+        credential : Credential,
+    },
 
-        /// The username to login with.
-        username    : String,
-        /// The credentials to login with.
-        credentials : String,
+    /// The user wants to run the tool normally.
+    Run {
+        /// The hostname after config file / CLI parsing
+        host : url::Url,  
     },
 }
 
@@ -222,73 +224,120 @@ pub struct Config {
     pub log_path    : PathBuf,
 
     /// The subcommand that is run
-    pub subcommand : ConfigSubcommand,
+    pub action : Action,
 }
 
 impl Config {
-    /// Loads the config file by first populating it with command-line arguments and then with the given config file.
+    /// Reads the command-line arguments and loads the config file.  
+    /// Note that, to use either, call combine() on the resulting pair.
     /// 
     /// **Returns**  
-    /// A new Config instance on success, or else an Error.
-    pub fn load() -> Result<Self, Error> {
+    /// A new (Arguments, ConfigFile) pair on success, or else an Error.
+    pub fn load() -> Result<(Arguments, ConfigFile), Error> {
         // First, parse the CLI
-        let mut config = Arguments::parse();
+        let args = Arguments::parse();
 
         // Next, open the config file and parse it as the correct struct
-        let handle = match File::open(&config.config_path) {
+        let handle = match File::open(&args.config_path) {
             Ok(handle) => handle,
             Err(err)   => {
                 // If it's not-found, we generate it first
                 if err.kind() == std::io::ErrorKind::NotFound {
                     // Make sure the path exists
-                    if let Err(err) = fs::create_dir_all(&config.config_path.parent().expect("Config path does not have a parent-part; this should never happen!")) {
-                        return Err(Error::DirCreateError{ path: config.config_path, err });
+                    if let Err(err) = fs::create_dir_all(&args.config_path.parent().expect("Config path does not have a parent-part; this should never happen!")) {
+                        return Err(Error::DirCreateError{ path: args.config_path, err });
                     }
 
                     // Try to open the file
-                    let handle = match File::create(&config.config_path) {
+                    let handle = match File::create(&args.config_path) {
                         Ok(handle) => handle,
-                        Err(err)   => { return Err(Error::FileCreateError{ path: config.config_path, err }); }
+                        Err(err)   => { return Err(Error::FileCreateError{ path: args.config_path, err }); }
                     };
 
                     // Write to it with serde
                     if let Err(err) = serde_json::to_writer_pretty(handle, &ConfigFile::default()) {
-                        return Err(Error::FileGenerateError{ path: config.config_path, err });
+                        return Err(Error::FileGenerateError{ path: args.config_path, err });
                     }
 
                     // Now, open the same handle again to continue
-                    match File::open(&config.config_path) {
+                    match File::open(&args.config_path) {
                         Ok(handle) => handle,
-                        Err(err)   => { return Err(Error::FileOpenError{ path: config.config_path, err }); }
+                        Err(err)   => { return Err(Error::FileOpenError{ path: args.config_path, err }); }
                     }
                 } else {
-                    return Err(Error::FileOpenError{ path: config.config_path, err });
+                    return Err(Error::FileOpenError{ path: args.config_path, err });
                 }
             }
         };
         let reader = BufReader::new(handle);
-        let config_file: ConfigFile = match serde_json::from_reader(reader) {
+        let file: ConfigFile = match serde_json::from_reader(reader) {
             Ok(file) => file,
-            Err(err) => { return Err(Error::FileParseError{ path: config.config_path, err }); }
+            Err(err) => { return Err(Error::FileParseError{ path: args.config_path, err }); }
         };
 
-        // Overwrite the relevant general parts of the struct
-        if let None = config.log_path {
-            config.log_path = Some(config_file.log_path);
-        }
+        // Done!
+        Ok((args, file))
+    }
 
-        // Overwrite the relevant subcommand-specific parts of the struct
-        match config.subcommand {
-            ConfigSubcommand::Run{ ref mut host } => {
-                if let None = host {
-                    *host = config_file.host.map(|host| host.0);
+    /// Combines a loaded Arguments and ConfigFile struct into one Config.
+    /// 
+    /// **Arguments**
+    ///  * `args`: The Argument struct to overwrite the data in the ConfigFile with.
+    ///  * `file`: The ConfigFile that contains the data to fallback to if it's missing from the Arguments.
+    /// 
+    /// **Returns**  
+    /// A new Config instance on success, or else an Error.
+    pub fn combine(args: Arguments, file: ConfigFile) -> Result<Self, Error> {
+        // Resolve the toplevel arguments in the config first
+        let config_path = args.config_path;
+        let log_path    = args.log_path.unwrap_or(file.log_path);
+
+        // Next, match on the Arguments' subcommand to make an Action
+        let action = match args.subcommand {
+            ArgumentSubcommand::Login{ host, username, password } => {
+                // Decide what method of authentication to use
+                let cred: Credential;
+                if password {
+                    // Prompt the user for a password
+                    let password = match rpassword::prompt_password(format!("Password for '{}':", &host)) {
+                        Ok(password) => password,
+                        Err(err)     => { return Err(Error::PasswordPromptError{ err }); }  
+                    };
+
+                    // Create a Credential from it
+                    cred = match Credential::from_password(username, password) {
+                        Ok(cred) => cred,
+                        Err(err) => { return Err(Error::CredentialError{ err }); }
+                    };
+                } else {
+                    return Err(Error::NoCredentials);
                 }
+
+                // With the user having provided us their credentials, build the action
+                Action::Login{ host, credential: cred }
             },
 
-            _ => {},
-        }
+            ArgumentSubcommand::Run{ host } => {
+                // Resolve the host
+                let host = match host {
+                    Some(host) => host,
+                    None => match file.host {
+                        Some(host) => host.0,
+                        None       => { return Err(Error::NotLoggedIn); }
+                    }
+                };
 
-        // Done!
-        Ok(config)
+                // Use that to build the action
+                Action::Run{ host }
+            },
+        };
+
+        // Now, build the action with the created parameters
+        Ok(Self {
+            config_path,
+            log_path,
+            
+            action,
+        })
     }
 }

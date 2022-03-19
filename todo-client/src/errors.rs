@@ -4,7 +4,7 @@
  * Created:
  *   17 Mar 2022, 09:26:00
  * Last edited:
- *   17 Mar 2022, 14:58:03
+ *   19 Mar 2022, 10:37:45
  * Auto updated?
  *   Yes
  *
@@ -15,6 +15,8 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 use std::path::PathBuf;
+
+use todo_spec::credentials::Error as CredentialError;
 
 
 /***** ERRORS *****/
@@ -34,6 +36,16 @@ pub enum ConfigError {
     FileParseError{ path: PathBuf, err: serde_json::Error },
     /// Could not update the configuration file.
     FileUpdateError{ path: PathBuf, err: serde_json::Error },
+
+    /// THe user did not specify how they are going to give us credentials
+    NoCredentials,
+    /// Could not create a Credential struct
+    CredentialError{ err: CredentialError },
+    /// Could not prompt the user for a password
+    PasswordPromptError{ err: std::io::Error },
+
+    /// The user was not logged in
+    NotLoggedIn,
 }
 
 impl Display for ConfigError {
@@ -46,6 +58,12 @@ impl Display for ConfigError {
             ConfigError::FileOpenError{ path, err }   => write!(f, "Could not open config file '{}': {}", path.display(), err),
             ConfigError::FileParseError{ path, err }  => write!(f, "Could not parse config file '{}': {}", path.display(), err),
             ConfigError::FileUpdateError{ path, err } => write!(f, "Could not update config file '{}': {}", path.display(), err),
+
+            ConfigError::NoCredentials              => write!(f, "Did not specify a method to provide credentials"),
+            ConfigError::CredentialError{ err }     => write!(f, "Could not create a Credential: {}", err),
+            ConfigError::PasswordPromptError{ err } => write!(f, "Could not prompt for a password: {}", err),
+
+            ConfigError::NotLoggedIn => write!(f, "You are not logged-in; run the login subcommand first"),
         }
     }
 }
