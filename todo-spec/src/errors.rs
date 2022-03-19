@@ -4,7 +4,7 @@
  * Created:
  *   18 Mar 2022, 16:04:08
  * Last edited:
- *   19 Mar 2022, 09:43:18
+ *   19 Mar 2022, 15:08:22
  * Auto updated?
  *   Yes
  *
@@ -24,7 +24,7 @@ pub enum CredentialError {
     /// The given username was not valid.
     InvalidUsername{ username: String },
     /// Could not hash the given password.
-    PasswordHashError{ err: argonautica::Error },
+    PasswordHashError{ err: argon2::Error },
 
     /// Could not open the given file
     FileOpenError{ path: PathBuf, err: std::io::Error },

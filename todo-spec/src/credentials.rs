@@ -4,7 +4,7 @@
  * Created:
  *   17 Mar 2022, 18:35:32
  * Last edited:
- *   19 Mar 2022, 10:41:32
+ *   19 Mar 2022, 15:08:36
  * Auto updated?
  *   Yes
  *
@@ -17,8 +17,8 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-use argonautica::{Hasher, Verifier};
-use argonautica::input::Password;
+use argon2::{self, Config};
+use rand::RngCore;
 use regex::Regex;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -115,6 +115,8 @@ mod tests {
 /***** CONSTANTS *****/
 /// Defines the regular expression that is used to match usernames.
 const USERNAME_REGEX: &str = r"^[0-9a-zA-Z_-]+$";
+/// The length of the salt used
+const SALT_SIZE: usize = 128;
 
 
 
@@ -133,7 +135,7 @@ impl Credential {
     /// 
     /// **Generic types**
     ///  * `S`: The String-like type of the username that is passed to the function.
-    ///  * `P`: The type of the password that is passed to the function.
+    ///  * `B`: The Bytes-like type of the password that is passed to the function.
     /// 
     /// **Arguments**
     ///  * `username`: The username of the user to whom the given password belongs.
@@ -141,21 +143,24 @@ impl Credential {
     /// 
     /// **Returns**  
     /// The new Credential instance on success, or else an Error.
-    pub fn from_password<'a, S: Into<String>, P: Into<Password<'a>>>(username: S, password: P) -> Result<Self, Error> {
+    pub fn from_password<S: Into<String>, B: AsRef<[u8]>>(username: S, password: B) -> Result<Self, Error> {
         // Convert String-like into String
         let username = username.into();
+        // Convert bytes-like into bytes
+        let password = password.as_ref();
 
         // Verify that the username contains no illegal characters
         let re = Regex::new(USERNAME_REGEX).expect("Illegal Regex for matching usernames; this should never happen!");
         if !re.is_match(&username) { return Err(Error::InvalidUsername{ username }); }
 
-        // Build the hasher
-        let mut hasher = Hasher::default();
-        let hash = match hasher
-            .opt_out_of_secret_key(true)
-            .with_password(password)
-            .hash()
-        {
+        // Generate a random salt
+        let mut rng = rand::thread_rng();
+        let mut salt: Vec<u8> = vec![0; SALT_SIZE];
+        rng.fill_bytes(&mut salt);
+
+        // Hash with the rust-argon crate
+        let config = Config::default();
+        let hash = match argon2::hash_encoded(password, &salt, &config) {
             Ok(hash) => hash,
             Err(err) => { return Err(Error::PasswordHashError{ err }); }
         };
@@ -241,7 +246,7 @@ impl Credential {
     /// 
     /// **Generic types**
     ///  * `S`: The String-like type of the username that is passed to the function.
-    ///  * `P`: The type of the password that is passed to the function.
+    ///  * `B`: The Bytes-like type of the password that is passed to the function.
     /// 
     /// **Arguments**
     ///  * `username`: The username of the user to whom the given password belongs.
@@ -249,9 +254,11 @@ impl Credential {
     /// 
     /// **Returns**  
     /// Whether or not the passwords match, or else an Error if some error occurred while hashing.
-    pub fn verify_password<'a, S: Into<String>, P: Into<Password<'a>>>(&self, username: S, password: P) -> Result<bool, Error> {
+    pub fn verify_password<S: Into<String>, B: AsRef<[u8]>>(&self, username: S, password: B) -> Result<bool, Error> {
         // Convert String-like into String
         let username = username.into();
+        // Convert bytes-like into bytes
+        let password = password.as_ref();
 
         // Make sure we are a Password credential
         #[allow(irrefutable_let_patterns)]
@@ -259,13 +266,8 @@ impl Credential {
             // First, make sure the username makes sense
             if self_username != &username { return Ok(false); }
 
-            // Build the verifier
-            let mut verifier = Verifier::default();
-            let is_valid = match verifier
-                .with_hash(self_password)
-                .with_password(password)
-                .verify()
-            {
+            // Verify the hash
+            let is_valid = match argon2::verify_encoded(&self_password, &password) {
                 Ok(is_valid) => is_valid,
                 Err(err)     => { return Err(Error::PasswordHashError{ err }); }
             };
