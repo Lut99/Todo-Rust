@@ -4,7 +4,7 @@
  * Created:
  *   19 Mar 2022, 11:45:08
  * Last edited:
- *   19 Mar 2022, 18:45:40
+ *   19 Mar 2022, 20:04:58
  * Auto updated?
  *   Yes
  *
@@ -117,10 +117,10 @@ fn ensure_database(pool: Arc<Pool>, root_cred: &Credential) -> Result<(), Error>
 
     // Insert the root user into it if it does not exist yet
     debug!("Checking if root user already exists...");
-    let query = format!("SELECT user, pass FROM users WHERE name = '{}';", root_cred.user());
+    let query = format!("SELECT name, pass FROM users WHERE name = '{}';", root_cred.user());
     let root_users: Vec<Account> = match conn.query_map(
         &query,
-        |(user, pass)| { Account{ credential : Credential::new::<String, String>(user, pass) } }
+        |(name, pass)| { Account{ credential : Credential::new::<String, String>(name, pass) } }
     ) {
         Ok(res)  => res,
         Err(err) => { return Err(Error::MySqlQueryError{ query, err }); }
@@ -178,8 +178,14 @@ async fn main() {
 
 
 
-    // Load the root password file
-    debug!("Loading root password...");
+    // Load the credentials
+    debug!("Loading MySQL credentials...");
+    let mysql_cred = match Credential::from_file(args.mysql_root_cred) {
+        Ok(cred) => cred,
+        Err(err) => { error!("{}", err); std::process::exit(1); }  
+    };
+
+    debug!("Loading root credentials...");
     let root_cred = match Credential::from_file(args.root_cred) {
         Ok(cred) => cred,
         Err(err) => { error!("{}", err); std::process::exit(1); }
@@ -189,7 +195,7 @@ async fn main() {
 
     // Prepare the pool for local MySQL connections
     info!("Preparing connections to MySQL database @ {}...", &args.mysql_url);
-    let pool = match Pool::new(Opts::from_url(&format!("{}", args.mysql_url)).expect("Could not get URL from Url; this should never happen!")) {
+    let pool = match Pool::new(Opts::from_url(&format!("mysql://{}:{}@{}", mysql_cred.user(), mysql_cred.pass(), args.mysql_url)).expect("Could not get URL from Url; this should never happen!")) {
         Ok(pool) => Arc::new(pool),
         Err(err) => { error!("{}", Error::MySqlPoolCreateError{ url: args.mysql_url, err }); std::process::exit(1); }
     };
