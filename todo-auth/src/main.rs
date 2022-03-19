@@ -4,7 +4,7 @@
  * Created:
  *   19 Mar 2022, 11:45:08
  * Last edited:
- *   19 Mar 2022, 20:04:58
+ *   19 Mar 2022, 21:14:54
  * Auto updated?
  *   Yes
  *
@@ -18,6 +18,7 @@
  *   This server uses a backend MySQL server to store the relevant user data.
 **/
 
+use std::fs;
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -62,6 +63,9 @@ struct Arguments {
     /// The location of the root user file
     #[clap(short, long, help = "The location of the root user's credentials in the Todo server.", default_value = "./root.cred")]
     root_cred : PathBuf,
+    /// The location of the JWT secret file
+    #[clap(short, long, help = "The location of the JWT secret file.", default_value = "./jwt.secret")]
+    secret: PathBuf,
 }
 
 
@@ -117,10 +121,10 @@ fn ensure_database(pool: Arc<Pool>, root_cred: &Credential) -> Result<(), Error>
 
     // Insert the root user into it if it does not exist yet
     debug!("Checking if root user already exists...");
-    let query = format!("SELECT name, pass FROM users WHERE name = '{}';", root_cred.user());
+    let query = format!("SELECT id, name, pass FROM users WHERE name = '{}';", root_cred.user());
     let root_users: Vec<Account> = match conn.query_map(
         &query,
-        |(name, pass)| { Account{ credential : Credential::new::<String, String>(name, pass) } }
+        |(id, name, pass)| { Account{ id, credential : Credential::new::<String, String>(name, pass).expect("Invalid username made its way into the MySQL database; this should never happen!") } }
     ) {
         Ok(res)  => res,
         Err(err) => { return Err(Error::MySqlQueryError{ query, err }); }
@@ -191,6 +195,12 @@ async fn main() {
         Err(err) => { error!("{}", err); std::process::exit(1); }
     };
 
+    debug!("Loading JWT secret...");
+    let secret = match fs::read_to_string(args.secret) {
+        Ok(secret) => Arc::new(secret),
+        Err(err)   => { error!("{}", err); std::process::exit(1); }
+    };
+
 
 
     // Prepare the pool for local MySQL connections
@@ -216,7 +226,7 @@ async fn main() {
         .and(warp::path::end())
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
-        .and_then(move |body| { login::handle(pool.clone(), body) });
+        .and_then(move |body| { login::handle(pool.clone(), secret.clone(), body) });
 
     // Prepare the global filter
     debug!("Preparing global warp filter...");

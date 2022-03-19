@@ -4,7 +4,7 @@
  * Created:
  *   17 Mar 2022, 18:35:32
  * Last edited:
- *   19 Mar 2022, 18:40:50
+ *   19 Mar 2022, 20:36:54
  * Auto updated?
  *   Yes
  *
@@ -17,8 +17,9 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 
-use argon2::{self, Config};
-use rand::RngCore;
+use argon2::Argon2;
+use argon2::password_hash::{ PasswordHash, PasswordHasher, PasswordVerifier, SaltString };
+use argon2::password_hash::rand_core::OsRng;
 use regex::Regex;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -107,8 +108,7 @@ mod tests {
 /***** CONSTANTS *****/
 /// Defines the regular expression that is used to match usernames.
 const USERNAME_REGEX: &str = r"^[0-9a-zA-Z_-]+$";
-/// The length of the salt used
-const SALT_SIZE: usize = 128;
+
 
 
 
@@ -160,12 +160,21 @@ impl Credential {
     /// **Arguments**
     ///  * `username`: The username of the user to whom the given password belongs.
     ///  * `password`: The (already hashed!) password.
-    #[inline]
-    pub fn new<S1: Into<String>, S2: Into<String>>(username: S1, password: S2) -> Self {
-        Self {
-            username : username.into(),
+    /// 
+    /// **Returns**  
+    /// The new Credential instance on success, or else an Error.
+    pub fn new<S1: Into<String>, S2: Into<String>>(username: S1, password: S2) -> Result<Self, Error> {
+        // Convert the String-like username into a String
+        let username = username.into();
+
+        // Verify the username first
+        verify_username(&username)?;
+
+        // Return it as a new Credential
+        Ok(Self {
+            username : username,
             password : password.into(),
-        }
+        })
     }
 
     /// Constructor for the Credential that takes a plain-text password and hashes it.
@@ -190,15 +199,15 @@ impl Credential {
         verify_username(&username)?;
 
         // Generate a random salt
-        let mut rng = rand::thread_rng();
-        let mut salt: Vec<u8> = vec![0; SALT_SIZE];
-        rng.fill_bytes(&mut salt);
+        let salt = SaltString::generate(&mut OsRng);
 
-        // Hash with the rust-argon crate
-        let config = Config::default();
-        let hash = match argon2::hash_encoded(password, &salt, &config) {
-            Ok(hash) => hash,
-            Err(err) => { return Err(Error::PasswordHashError{ err }); }
+        // Build the hasher with default config
+        let argon2 = Argon2::default();
+
+        // Hash the password
+        let hash = match argon2.hash_password(password, &salt) {
+            Ok(hash) => hash.to_string(),
+            Err(err) => { return Err(Error::PasswordHashError{ err }); }  
         };
 
         // Create a new Credential with this hash
@@ -334,7 +343,7 @@ impl Credential {
     /// 
     /// **Arguments**
     ///  * `username`: The username of the user to whom the given password belongs.
-    ///  * `password`: The plain text password we would like to hash as fast as possible.
+    ///  * `password`: The plain-text password we want to match against this one.
     /// 
     /// **Returns**  
     /// Whether or not the passwords match, or else an Error if some error occurred while hashing.
@@ -347,14 +356,15 @@ impl Credential {
         // Make sure the username makes sense
         if self.username != username { return Ok(false); }
 
-        // Verify the hash
-        let is_valid = match argon2::verify_encoded(&self.password, &password) {
-            Ok(is_valid) => is_valid,
-            Err(err)     => { return Err(Error::PasswordHashError{ err }); }
+        // Re-hash the internal password
+        let hash = match PasswordHash::new(&self.password) {
+            Ok(hash) => hash,
+            Err(err) => { return Err(Error::IllegalHash{ err }); }
         };
 
-        // Done; return the success state
-        Ok(is_valid)
+        // Verify the hash and return the result!
+        let argon2 = Argon2::default();
+        Ok(argon2.verify_password(password, &hash).is_ok())
     }
 
 

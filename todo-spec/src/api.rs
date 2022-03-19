@@ -4,7 +4,7 @@
  * Created:
  *   19 Mar 2022, 12:11:12
  * Last edited:
- *   19 Mar 2022, 12:17:37
+ *   19 Mar 2022, 21:05:25
  * Auto updated?
  *   Yes
  *
@@ -25,3 +25,9 @@ pub struct LoginJson {
     /// The password of the user
     pub password : String,
 }
+
+
+
+
+/***** LIBRARY FUNCTIONS *****/
+

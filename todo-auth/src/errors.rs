@@ -4,7 +4,7 @@
  * Created:
  *   19 Mar 2022, 11:48:04
  * Last edited:
- *   19 Mar 2022, 20:17:00
+ *   19 Mar 2022, 21:07:54
  * Auto updated?
  *   Yes
  *
@@ -70,6 +70,11 @@ pub enum LoginError {
     CredentialVerifyError{ err: todo_spec::credentials::Error },
     /// The given user was not known to the system
     UnknownUser{ username: String },
+
+    /// Could not create the Hmac key for the JWT's
+    HmacKeyError{ err: hmac::digest::InvalidLength },
+    /// Could not create the given JWT
+    JwtCreateError{ err: jwt::Error },
 }
 
 impl Display for LoginError {
@@ -81,6 +86,9 @@ impl Display for LoginError {
             LoginError::CredentialError{ err }       => write!(f, "{}", err),
             LoginError::CredentialVerifyError{ err } => write!(f, "Could not verify credentials: {}", err),
             LoginError::UnknownUser{ username }      => write!(f, "Unknown user '{}'", username),
+
+            LoginError::HmacKeyError{ err }   => write!(f, "Could not create Hmac key: {}", err),
+            LoginError::JwtCreateError{ err } => write!(f, "Could not create JWT: {}", err),
         }
     }
 }

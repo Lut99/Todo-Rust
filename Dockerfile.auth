@@ -14,6 +14,7 @@ COPY ./target/x86_64-unknown-linux-musl/release/todo-auth /todo-auth
 # Copy the authentication files
 COPY ./mysql_root.cred /mysql_root.cred
 COPY ./root.cred /root.cred
+COPY ./jwt.secret /jwt.secret
 
 # Set it as entrypoint
 ENTRYPOINT [ "/todo-auth" ]
